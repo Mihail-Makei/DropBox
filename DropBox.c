@@ -267,8 +267,6 @@ FLT_POSTOP_CALLBACK_STATUS PostCreate(
 
     status = ZwClose(FileHandle);
 
-    if (!NT_SUCCESS(status))
-        DbgPrint("FUCK!\r\n");
 
 PostCreateRelease:
     FltReleaseFileNameInformation(FileNameInformation);
