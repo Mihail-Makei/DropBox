@@ -1,18 +1,4 @@
-/*++
 
-Module Name:
-
-    HardLink.c
-
-Abstract:
-
-    This is the main module of the HardLink miniFilter driver.
-
-Environment:
-
-    Kernel mode
-
---*/
 
 #include <fltKernel.h>
 #include <dontuse.h>
