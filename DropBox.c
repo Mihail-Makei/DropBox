@@ -1,4 +1,18 @@
+/*++
 
+Module Name:
+
+    HardLink.c
+
+Abstract:
+
+    This is the main module of the HardLink miniFilter driver.
+
+Environment:
+
+    Kernel mode
+
+--*/
 
 #include <fltKernel.h>
 #include <dontuse.h>
@@ -9,6 +23,7 @@
 PFLT_FILTER gFilterHandle;
 ULONG_PTR OperationStatusCtx = 1;
 #define MAX_FILE_NAME_SIZE 1000
+#define CREATE_DISPOSITION 0x00000007
 
 
 
@@ -175,7 +190,7 @@ FLT_PREOP_CALLBACK_STATUS PreCreate(
     UNREFERENCED_PARAMETER(FltObjects);
     UNREFERENCED_PARAMETER(CompletionContext);
 
-    DbgPrint("Create callback invoked!\r\n");
+  //  DbgPrint("Create callback invoked!\r\n");
 
     return FLT_PREOP_SUCCESS_WITH_CALLBACK;
 }
@@ -193,11 +208,16 @@ FLT_POSTOP_CALLBACK_STATUS PostCreate(
     HANDLE FileHandle;
     PFLT_FILE_NAME_INFORMATION FileNameInformation;
     WCHAR Name[MAX_FILE_NAME_SIZE] = L"\\DosDevices\\C:\\FolderTwo\\";
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    UNICODE_STRING LinkName;
+    PFILE_OBJECT FileObject = NULL;
+
+    ULONG CreateDisposition = Data->Iopb->Parameters.Create.Options % 6;
 
     UNREFERENCED_PARAMETER(FltObjects);
     UNREFERENCED_PARAMETER(CompletionContext);
     UNREFERENCED_PARAMETER(Flags);
-
+    
     status = FltGetFileNameInformation(
         Data, 
         FLT_FILE_NAME_NORMALIZED,
@@ -224,9 +244,84 @@ FLT_POSTOP_CALLBACK_STATUS PostCreate(
     }
     
     wcscpy(&Name[25], &FileName[34]);
+    DbgPrint("New address: %ws\r\n", Name);
+
+    
+
+    RtlInitUnicodeString(
+        &LinkName, 
+        Name
+    );
+
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL) {
+        ExFreePool(FileName);
+
+        goto PostCreateRelease;
+    }
+
+    InitializeObjectAttributes(
+        &ObjectAttributes, 
+        &LinkName, 
+        OBJ_KERNEL_HANDLE, 
+        NULL, 
+        NULL
+    );
+
+    status = FltCreateFile(
+        gFilterHandle,
+        NULL,
+        &FileHandle,
+        FILE_WRITE_ATTRIBUTES | SYNCHRONIZE,
+        &ObjectAttributes,
+        &IoStatusBlock,
+        0,
+        FILE_ATTRIBUTE_NORMAL,
+        0,
+        FILE_CREATE,
+        FILE_NON_DIRECTORY_FILE,
+        NULL,
+        0,
+        0
+    );
+
+    if (!NT_SUCCESS(status)) {
+        goto PostCreateRelease;
+    }
+
+    FILE_LINK_INFORMATION FileLinkInfo = { FALSE, NULL, wcslen(Name), L'\\' };
+
+    status = ObReferenceObjectByHandle(
+        FileHandle,
+        0,
+        NULL,
+        KernelMode,
+        &FileObject,
+        NULL
+    );
+
+    if (NT_SUCCESS(status)) {
+        status = FltSetInformationFile(
+            FltObjects->Instance,
+            FileObject, 
+            &FileLinkInfo, 
+            sizeof(FILE_LINK_INFORMATION),
+            FileLinkInformation
+        );
+
+        DbgPrint("Hello world!\r\n");
+    }
+
+    FltClose(FileHandle);
+
+#define TEST(testnum, a, b, c, x1, x2, num) \
+    double x1_ = 0, x2_ = 0; \
+    int num_ = 0; \
+    decision(a, b, c, &x1_, &x2_, &num_); \
+    if (x1_ == x1, x2_ == x2, x3_ == x3) \
+       printf("TEST %d OK\n", testnum);
 
 
-    status = ObOpenObjectByPointer(
+    /**status = ObOpenObjectByPointer(
         Data->Iopb->TargetFileObject,
         OBJ_KERNEL_HANDLE,
         NULL,
@@ -235,7 +330,6 @@ FLT_POSTOP_CALLBACK_STATUS PostCreate(
         KernelMode,
         &FileHandle
     );
-    DbgPrint("New address: %ws %lu\r\n", Name, FileHandle);
 
     if (!NT_SUCCESS(status)) {
         DbgPrint("Object not opened\r\n");
@@ -267,13 +361,15 @@ FLT_POSTOP_CALLBACK_STATUS PostCreate(
 
     status = ZwClose(FileHandle);
 
+    if (!NT_SUCCESS(status))
+        DbgPrint("FUCK!\r\n");*/
 
 PostCreateRelease:
     FltReleaseFileNameInformation(FileNameInformation);
 
 PostCreateExit:
-
-    DbgPrint("Post create callback invoked!\r\n");
+    
+   // DbgPrint("Post create callback invoked!\r\n");
 
     return FLT_POSTOP_FINISHED_PROCESSING;
 }
